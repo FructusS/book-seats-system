@@ -5,22 +5,24 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
-import android.text.TextPaint
 import android.util.AttributeSet
 import android.util.TypedValue
-import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.core.content.ContextCompat
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.properties.Delegates
 
-class OrderTicketView @JvmOverloads constructor(context : Context, attrs : AttributeSet? = null) :
-    View(context, attrs) {
+class OrderTicketView @JvmOverloads constructor(
+    context: Context,
+    attributeSet: AttributeSet?=null,
+) :
+    View(context, attributeSet, R.attr.orderTicketStyle,R.style.OrderTicketView) {
+    private var seatList: List<Seat> = listOf()
 
-    private var seatList : List<Seat> = listOf()
+    var selectedSeats = listOf<Seat>()
+
+    var seatClickListener : SeatClickListener?=null
 
     private lateinit var textPaint: Paint
     private lateinit var borderPaint: Paint
@@ -28,121 +30,118 @@ class OrderTicketView @JvmOverloads constructor(context : Context, attrs : Attri
     private lateinit var orderedSeatPaint: Paint
     private lateinit var notAvailableSeatPaint: Paint
     private lateinit var issuedSeatPaint: Paint
+
+
+    private var freeSeatColor by Delegates.notNull<Int>()
+    private var orderedSeatColor by Delegates.notNull<Int>()
+    private var notAvailableSeatColor by Delegates.notNull<Int>()
+    private var issuedSeatColor by Delegates.notNull<Int>()
     // safe zone rect where we can drawing
     private val fieldRect = RectF(0f, 0f, 0f, 0f)
+
     // size of one cell
     private var cellSize: Float = 0f
+
     // padding in the cell
     private var cellPadding: Float = 0f
-    private var row : Int = 40
-    private var column : Int = 50
+    private var rows: Int = 44
+    private var columns: Int = 44
+
     // helper variable to avoid object allocation in onDraw
     private val cellRect = RectF()
-
-    companion object {
-        const val FREE_SEAT = Color.GREEN
-        const val ORDERED_SEAT = Color.MAGENTA
-        const val NOT_AVAILABLE_SEAT = Color.GRAY
-        const val ISSUED_SEAT = Color.CYAN
-    }
+    private val rowTextRect = RectF()
+    private val placeTextRect = RectF()
 
     init {
-        initPaints()
-        if (isInEditMode){
-            seatList = listOf<Seat>(
-                Seat(0,1,1,1,"asdasd",100f,SeatStatus.FREE_SEAT),
-                Seat(0,2,1,1,"asdasd",100f,SeatStatus.FREE_SEAT),
-                Seat(0,3,1,1,"asdasd",100f,SeatStatus.FREE_SEAT),
-                Seat(0,4,1,1,"asdasd",100f,SeatStatus.ISSUED_SEAT),
-                Seat(0,5,1,1,"asdasd",100f,SeatStatus.ISSUED_SEAT),
-                Seat(0,6,1,1,"asdasd",100f,SeatStatus.ISSUED_SEAT),
-                Seat(0,7,1,1,"asdasd",100f,SeatStatus.ISSUED_SEAT),
-                Seat(0,8,1,1,"asdasd",100f,SeatStatus.NOT_AVAILABLE_SEAT),
-                Seat(0,9,1,1,"asdasd",100f,SeatStatus.NOT_AVAILABLE_SEAT),
-            )
+        if (attributeSet != null) {
+            initAttributes(attributeSet)
+        } else {
+            initDefaultColors()
         }
+
+        initPaints()
     }
 
-    private fun initPaints(){
+    private fun initDefaultColors() {
+        freeSeatColor = Color.GREEN
+        orderedSeatColor = Color.MAGENTA
+        notAvailableSeatColor = Color.GRAY
+        issuedSeatColor = Color.CYAN
+    }
+
+    private fun initAttributes(attributeSet: AttributeSet) {
+        val typedArray = context.obtainStyledAttributes(attributeSet,R.styleable.OrderTicketView)
+
+        freeSeatColor = typedArray.getColor(R.styleable.OrderTicketView_free_seat_background, context.getColor(R.color.light_green))
+        orderedSeatColor = typedArray.getColor(R.styleable.OrderTicketView_ordered_seat_background, context.getColor(R.color.pink))
+        issuedSeatColor = typedArray.getColor(R.styleable.OrderTicketView_issued_seats_background, context.getColor(R.color.light_cyan))
+        notAvailableSeatColor = typedArray.getColor(R.styleable.OrderTicketView_not_available_seat_background, context.getColor(R.color.gray))
+
+        typedArray.recycle()
+    }
+
+    private fun initPaints() {
         textPaint = Paint().apply {
             Paint.ANTI_ALIAS_FLAG
             color = Color.BLACK
-            style = Paint.Style.STROKE
+            style = Paint.Style.FILL
 
-            textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,8f,resources.displayMetrics)
-        }
-        textPaint = TextPaint().apply {
-            Paint.ANTI_ALIAS_FLAG
-            color = Color.BLACK
-            style = Paint.Style.STROKE
-
-            textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,8f,resources.displayMetrics)
+            textSize = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_SP,
+                16.5f,
+                resources.displayMetrics
+            )
         }
         borderPaint = Paint().apply {
             Paint.ANTI_ALIAS_FLAG
             color = Color.BLACK
             style = Paint.Style.STROKE
-            strokeWidth = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,10f,resources.displayMetrics)
+            strokeWidth =
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1f, resources.displayMetrics)
         }
         freeSeatPaint = Paint().apply {
             Paint.ANTI_ALIAS_FLAG
-            color = FREE_SEAT
+            color = freeSeatColor
             style = Paint.Style.FILL
         }
         orderedSeatPaint = Paint().apply {
             Paint.ANTI_ALIAS_FLAG
-            color = ORDERED_SEAT
+            color = orderedSeatColor
             style = Paint.Style.FILL
-            strokeWidth = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,1f,resources.displayMetrics)
+            strokeWidth =
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1f, resources.displayMetrics)
         }
         notAvailableSeatPaint = Paint().apply {
             Paint.ANTI_ALIAS_FLAG
-            color = NOT_AVAILABLE_SEAT
+            color = notAvailableSeatColor
             style = Paint.Style.FILL
         }
         issuedSeatPaint = Paint().apply {
             Paint.ANTI_ALIAS_FLAG
-            color = ISSUED_SEAT
+            color = issuedSeatColor
             style = Paint.Style.FILL
         }
     }
 
-    fun setSeats(seats : List<Seat>){
+    fun setSeats(seats: List<Seat>) {
         this.seatList = seats
     }
-//
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-//        val desiredWidth = 100 // Предполагаемая ширина View
-//        val desiredHeight = 100 // Предполагаемая высота View
-//
-//        val widthMode = MeasureSpec.getMode(widthMeasureSpec)
-//        val widthSize = MeasureSpec.getSize(widthMeasureSpec)
-//        val heightMode = MeasureSpec.getMode(heightMeasureSpec)
-//        val heightSize = MeasureSpec.getSize(heightMeasureSpec)
-//
-//        val width = when (widthMode) {
-//            MeasureSpec.EXACTLY -> widthSize // Задан конкретный размер для ширины
-//            MeasureSpec.AT_MOST -> min(desiredWidth, widthSize) // Размер не должен превышать заданный размер
-//            else -> desiredWidth // Задать предпочтительный размер, если точного или максимального размера не задано
-//        }
-//
-//        val height = when (heightMode) {
-//            MeasureSpec.EXACTLY -> heightSize // Задан конкретный размер для высоты
-//            MeasureSpec.AT_MOST -> min(desiredHeight, heightSize) // Размер не должен превышать заданный размер
-//            else -> desiredHeight // Задать предпочтительный размер, если точного или максимального размера не задано
-//        }
-//
-//        setMeasuredDimension(width, height)
 
         val minWidth = suggestedMinimumWidth + paddingLeft + paddingRight
         val minHeight = suggestedMinimumHeight + paddingTop + paddingBottom
 
         // calculating desired size of view
-        val desiredCellSizeInPixels = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 10f,
-            resources.displayMetrics).toInt()
+        val desiredCellSizeInPixels = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP, 90f,
+            resources.displayMetrics
+        ).toInt()
 
-        val desiredWith = max(minWidth, column * desiredCellSizeInPixels + paddingLeft + paddingRight)
-        val desiredHeight = max(minHeight, row * desiredCellSizeInPixels + paddingTop + paddingBottom)
+        val desiredWith =
+            max(minWidth, columns * desiredCellSizeInPixels + paddingLeft + paddingRight)
+        val desiredHeight =
+            max(minHeight, rows * desiredCellSizeInPixels + paddingTop + paddingBottom)
 
         // submit view size
         setMeasuredDimension(
@@ -157,139 +156,174 @@ class OrderTicketView @JvmOverloads constructor(context : Context, attrs : Attri
         super.onSizeChanged(w, h, oldw, oldh)
         updateViewSizes()
     }
-    private fun updateViewSizes() {
 
-        val maxX = seatList.maxBy { it.x }.x
-        val minY = seatList.minBy { it.y }.y
+    private fun updateViewSizes() {
         val safeWidth = width - paddingLeft - paddingRight
         val safeHeight = height - paddingTop - paddingBottom
 
-        val cellWidth = safeWidth / maxX.toFloat()
-        val cellHeight = safeHeight / minY.toFloat()
+        val cellWidth = safeWidth / columns.toFloat()
+        val cellHeight = safeHeight / rows.toFloat()
 
         cellSize = min(cellWidth, cellHeight)
-        cellPadding = cellSize * 0.2f
+        cellPadding = cellSize * 0.09f
 
-        val fieldWidth = cellSize * 5
-        val fieldHeight = cellSize * 5
+        val fieldWidth = cellSize * columns.toFloat()
+        val fieldHeight = cellSize * rows.toFloat()
 
         fieldRect.left = paddingLeft + (safeWidth - fieldWidth) / 2
         fieldRect.top = paddingTop + (safeHeight - fieldHeight) / 2
         fieldRect.right = fieldRect.left + fieldWidth
         fieldRect.bottom = fieldRect.top + fieldHeight
     }
-    override fun onDraw(canvas: Canvas) {
 
-        for (i in seatList){
-            val cellRect = getCellRect(i.x,i.y)
-            when(i.status){
-                SeatStatus.FREE_SEAT -> canvas.apply {
-//                    drawRect(cellRect.left,cellRect.top,cellRect.right,cellRect.bottom,freeSeatPaint)
-//                    drawPoint(cellRect.left,cellRect.top,borderPaint)
+    override fun onDraw(canvas: Canvas) {
+        drawSeats(canvas)
+    }
+
+    private fun drawSeats(canvas: Canvas) {
+        for (seat in seatList) {
+            val cellRect = getCellRect(seat.x, seat.y)
+            val rowTextRect = getRowTextRect(cellRect)
+            val placeTextRect = getPlaceTextRect(cellRect, seat.place.toString())
+            when (seat.status) {
+                SeatStatus.FREE_SEAT -> {
+                    canvas.apply {
+                        drawRect(
+                            cellRect.left,
+                            cellRect.top,
+                            cellRect.right,
+                            cellRect.bottom,
+                            freeSeatPaint
+                        )
+                        drawText("${seat.row}", rowTextRect.left, rowTextRect.top, textPaint)
+                        drawText(
+                            "${seat.place}",
+                            placeTextRect.right,
+                            placeTextRect.bottom,
+                            textPaint
+                        )
+                    }
                 }
-                SeatStatus.ORDERED_SEAT -> canvas.apply{
-//                    drawLine(cellRect.left,cellRect.top,cellRect.right,cellRect.bottom,orderedSeatPaint)
-                    drawPoint(cellRect.left,cellRect.top,borderPaint)
+
+                SeatStatus.ORDERED_SEAT -> {
+                    canvas.apply {
+                        drawRect(
+                            cellRect.left,
+                            cellRect.top,
+                            cellRect.right,
+                            cellRect.bottom,
+                            orderedSeatPaint
+                        )
+                        drawText("${seat.row}", rowTextRect.left, rowTextRect.top, textPaint)
+                        drawText(
+                            "${seat.place}",
+                            placeTextRect.right,
+                            placeTextRect.bottom,
+                            textPaint
+                        )
+                    }
                 }
-                SeatStatus.NOT_AVAILABLE_SEAT -> canvas.apply{
-//                    drawLine(cellRect.left,cellRect.top,cellRect.right,cellRect.bottom,freeSeatPaint)
-                    drawPoint(cellRect.left,cellRect.top,borderPaint)
+
+                SeatStatus.NOT_AVAILABLE_SEAT -> {
+                    canvas.apply {
+                        drawRect(
+                            cellRect.left,
+                            cellRect.top,
+                            cellRect.right,
+                            cellRect.bottom,
+                            notAvailableSeatPaint
+                        )
+                        drawText("${seat.row}", rowTextRect.left, rowTextRect.top, textPaint)
+                        drawText(
+                            "${seat.place}",
+                            placeTextRect.right,
+                            placeTextRect.bottom,
+                            textPaint
+                        )
+                    }
                 }
-                SeatStatus.ISSUED_SEAT -> canvas.apply{
-//                    drawLine(cellRect.left,cellRect.top,cellRect.right,cellRect.bottom,notAvailableSeatPaint)
-                    drawPoint(cellRect.left,cellRect.top,borderPaint)
+
+                SeatStatus.ISSUED_SEAT -> {
+                    canvas.apply {
+                        drawRect(
+                            cellRect.left,
+                            cellRect.top,
+                            cellRect.right,
+                            cellRect.bottom,
+                            issuedSeatPaint
+                        )
+                        drawText("${seat.row}", rowTextRect.left, rowTextRect.top, textPaint)
+                        drawText(
+                            "${seat.place}",
+                            placeTextRect.right,
+                            placeTextRect.bottom,
+                            textPaint
+                        )
+                    }
+                }
+
+                SeatStatus.EMPTY -> {}
+            }
+        }
+
+    }
+
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when(event.action){
+            MotionEvent.ACTION_UP ->{
+                val clickedSeat = getClickedSeat(event.x,event.y)
+                clickedSeat?.let{
+                    if (clickedSeat.status == SeatStatus.FREE_SEAT){
+                        seatClickListener?.onSeatClicked(it)
+                        invalidate()
+                        return true
+                    }
+                }
+            }
+            MotionEvent.ACTION_DOWN ->{
+                val clickedSeat = getClickedSeat(event.x,event.y)
+                clickedSeat?.let{
+                    if (clickedSeat.status == SeatStatus.FREE_SEAT){
+                        seatClickListener?.onSeatClicked(it)
+                        invalidate()
+                        return true
+                    }
                 }
             }
         }
-//        for (i in seatList){
-//            when(i.status){
-//                SeatStatus.FREE_SEAT -> canvas.apply {
-//                    drawRect(5f,5f,5f,5f,freeSeatPaint)
-//                    drawText("1",3f,3f,textPaint)
-//                }
-//                SeatStatus.ORDERED_SEAT -> canvas.drawRect(5f,5f,5f,5f,orderedSeatPaint)
-//                SeatStatus.NOT_AVAILABLE_SEAT -> canvas.drawRect(5f,5f,5f,5f,notAvailableSeatPaint)
-//                SeatStatus.ISSUED_SEAT -> canvas.drawRect(5f,5f,5f,5f,issuedSeatPaint)
-//            }
-//        }
-
-//        canvas.drawRect(10f,10f,(width / seatList.size).toFloat() ,(height / seatList.size).toFloat(),orderedSeatPaint)
-//        canvas.drawRect(10f,10f,(width / seatList.size).toFloat() ,(height / seatList.size).toFloat(),borderPaint)
-//        canvas.drawRect(20f,20f,(width / seatList.size).toFloat() ,(height / seatList.size).toFloat(),orderedSeatPaint)
+        return super.onTouchEvent(event)
     }
 
-    private fun getCellRect(x: Int, y: Int): RectF {
-        cellRect.left = fieldRect.left + x * cellSize + cellPadding
-        cellRect.top = fieldRect.top + y * cellSize + cellPadding
+    private fun getClickedSeat(x: Float, y: Float): Seat? {
+        for (seat in seatList){
+            val cellRect = getCellRect(seat.x,seat.y)
+            if (x>= cellRect.left && x<= cellRect.right && y>= cellRect.top && y<= cellRect.bottom){
+                return seat
+            }
+        }
+        return null
+    }
+
+    private fun getRowTextRect(cellRect: RectF): RectF {
+        rowTextRect.top = cellRect.top + cellPadding * 2.3f
+        rowTextRect.left = cellRect.left + cellPadding * 1f
+        return rowTextRect
+    }
+
+    private fun getPlaceTextRect(cellRect: RectF, place: String): RectF {
+        placeTextRect.right = cellRect.right - cellPadding * 1f - place.length * cellPadding
+        placeTextRect.bottom = cellRect.bottom - cellPadding
+        return placeTextRect
+    }
+
+    private fun getCellRect(row: Int, column: Int): RectF {
+        cellRect.left = fieldRect.left + column * cellSize + cellPadding
+        cellRect.top = fieldRect.top + row * cellSize + cellPadding
         cellRect.right = cellRect.left + cellSize - cellPadding * 2
-        cellRect.left = cellRect.top + cellSize - cellPadding * 2
+        cellRect.bottom = cellRect.top + cellSize - cellPadding * 2
         return cellRect
     }
 
-//
-//    fun show() {
-//        val layoutSeat = LinearLayout(context)
-//        val params = LinearLayout.LayoutParams(
-//            ViewGroup.LayoutParams.WRAP_CONTENT,
-//            ViewGroup.LayoutParams.WRAP_CONTENT
-//        )
-//        layoutSeat.orientation = LinearLayout.VERTICAL
-//        layoutSeat.layoutParams = params
-//        layoutSeat.setPadding(
-//            layout_padding * seatGaping,
-//            layout_padding * seatGaping,
-//            layout_padding * seatGaping,
-//            layout_padding * seatGaping
-//        )
-//        viewGroupLayout.addView(layoutSeat)
-//
-//        var layout: LinearLayout? = null
-//        for (index in seats.indices) {
-//            if (seats[index] == '/') {
-//                layout = LinearLayout(context)
-//                val paramsV = LinearLayout.LayoutParams(
-//                    ViewGroup.LayoutParams.WRAP_CONTENT,
-//                    ViewGroup.LayoutParams.WRAP_CONTENT
-//                )
-//                layout.layoutParams = paramsV
-//                layout.orientation = LinearLayout.HORIZONTAL
-//                layout.gravity = Gravity.CENTER
-//
-//                layoutSeat.addView(layout)
-//            } else if (seats[index] == 'U') {
-//                count++
-//                val view = TextView(context)
-//                setSeatAttrs(index, view, layout)
-//                markAsBooked(view)
-//
-//            } else if (seats[index] == 'A') {
-//                count++
-//                val view = TextView(context)
-//                setSeatAttrs(index, view, layout)
-//                markAsAvailable(view)
-//            } else if (seats[index] == 'R') {
-//                count++
-//                val view = TextView(context)
-//                setSeatAttrs(index, view, layout)
-//                markAsReserved(view)
-//
-//
-//            } else if (seats[index] == 'S') {
-//                count++
-//                val view = TextView(context)
-//                setSeatAttrs(index, view, layout)
-//                markAsTransparentSeat(view)
-//            } else if (seats[index] == '_') {
-//                val view = TextView(context)
-//                val layoutParams = LinearLayout.LayoutParams(seatSize, seatSize)
-//                layoutParams.setMargins(seatGaping, seatGaping, seatGaping, seatGaping)
-//                view.layoutParams = layoutParams
-//                view.setBackgroundColor(Color.TRANSPARENT)
-//                view.text = ""
-//                layout!!.addView(view)
-//            }
-//        }
-//
-//    }
 
 }
