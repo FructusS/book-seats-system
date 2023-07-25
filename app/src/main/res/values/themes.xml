@@ -12,5 +12,15 @@
         <!-- Status bar color. -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
         <!-- Customize your theme here. -->
+        
+        <item name="orderTicketStyle">@style/OrderTicketView</item>
+    </style>
+
+
+    <style name="OrderTicketView">
+        <item name="free_seat_background">@color/light_green</item>
+        <item name="ordered_seat_background">@color/pink</item>
+        <item name="not_available_seat_background">@color/gray</item>
+        <item name="issued_seats_background">@color/light_cyan</item>
     </style>
 </resources>
