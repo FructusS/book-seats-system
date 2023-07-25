@@ -1,34 +1,45 @@
 package ru.petrikirche.orderticket
 
+import android.graphics.Color
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.widget.Toast
 import ru.petrikirche.orderticket.databinding.ActivityMainBinding
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        val list = mutableListOf<Seat>()
+        for (i in 1..44){
+            for(j in 1..44){
+                val status = when(Random.nextInt(0,5)){
+                    0 -> SeatStatus.ORDERED_SEAT
+                    1 -> SeatStatus.ISSUED_SEAT
+                    2 -> SeatStatus.NOT_AVAILABLE_SEAT
+                    3 -> SeatStatus.FREE_SEAT
+                    else -> SeatStatus.EMPTY
+                }
+                list.add(i - 1,Seat(i - 1,j - 1,j,i,"asdasd", Random.nextInt(0, 1000000).toFloat(),status))
 
-        val list = listOf<Seat>(
-            Seat(1,1,1,1,"asdasd",100f,SeatStatus.FREE_SEAT),
-            Seat(6,1,1,1,"asdasd",100f,SeatStatus.FREE_SEAT),
-            Seat(1,1,1,1,"asdasd",100f,SeatStatus.FREE_SEAT),
-            Seat(2,1,1,1,"asdasd",100f,SeatStatus.ISSUED_SEAT),
-            Seat(3,1,1,1,"asdasd",100f,SeatStatus.ISSUED_SEAT),
-            Seat(4,1,1,1,"asdasd",100f,SeatStatus.ISSUED_SEAT),
-            Seat(5,1,1,1,"asdasd",100f,SeatStatus.ISSUED_SEAT),
-            Seat(1,2,1,1,"asdasd",100f,SeatStatus.NOT_AVAILABLE_SEAT),
-            Seat(1,3,1,1,"asdasd",100f,SeatStatus.NOT_AVAILABLE_SEAT),
-            Seat(1,4,1,1,"asdasd",100f,SeatStatus.NOT_AVAILABLE_SEAT),
-            Seat(1,5,1,1,"asdasd",100f,SeatStatus.NOT_AVAILABLE_SEAT),
-            Seat(1,6,1,1,"asdasd",100f,SeatStatus.ORDERED_SEAT),
-            Seat(1,7,1,1,"asdasd",100f,SeatStatus.ORDERED_SEAT),
-            Seat(1,8,1,1,"asdasd",100f,SeatStatus.ORDERED_SEAT),
-        )
+            }
+
+        }
 
         binding.orderTicketView.setSeats(list)
 
 
+        binding.orderTicketView.seatClickListener = object : SeatClickListener{
+            override fun onSeatClicked(seat: Seat) {
+                Toast.makeText(
+                    this@MainActivity,
+                    "Clicked Seat: Row ${seat.row}, Place ${seat.place}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+
+        }
     }
 }
