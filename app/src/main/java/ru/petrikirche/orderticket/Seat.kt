@@ -7,5 +7,5 @@ data class Seat(
     val row : Int,
     val info : String,
     val cost : Float,
-    val status : SeatStatus
+    var status : SeatStatus
 )
