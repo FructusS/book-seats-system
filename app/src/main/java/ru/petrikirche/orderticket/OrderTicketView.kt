@@ -9,19 +9,35 @@ import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.properties.Delegates
-
+typealias OnCellActionListener = (seatField : SeatField, seat: Seat) -> Unit
 class OrderTicketView @JvmOverloads constructor(
     context: Context,
     attributeSet: AttributeSet?=null,
 ) :
     View(context, attributeSet, R.attr.orderTicketStyle,R.style.OrderTicketView) {
-    private var seatList: List<Seat> = listOf()
+    var field: SeatField? = null
+        set(value) {
+            // removing listener from old field
+            field?.listeners?.remove(listener)
+            field = value
+            // assigning listener to a new field
+            value?.listeners?.add(listener)
+            // new field may have another number of rows/columns, another cells, so need to update:
+            updateViewSizes() // safe zone rect, cell size, cell padding
+            requestLayout() // in case of using wrap_content, view size may also be changed
+            invalidate() // redraw view
+        }
+
+    private val listener: OnFieldChangedListener = {
+        invalidate()
+    }
 
     var selectedSeats = listOf<Seat>()
-
+    var actionListener: OnCellActionListener? = null
     var seatClickListener : SeatClickListener?=null
 
     private lateinit var textPaint: Paint
@@ -52,6 +68,8 @@ class OrderTicketView @JvmOverloads constructor(
     private val rowTextRect = RectF()
     private val placeTextRect = RectF()
 
+    private var currentRow: Int = -1
+    private var currentColumn: Int = -1
     init {
         if (attributeSet != null) {
             initAttributes(attributeSet)
@@ -60,6 +78,19 @@ class OrderTicketView @JvmOverloads constructor(
         }
 
         initPaints()
+    }
+
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // start listening field data changes
+        field?.listeners?.add(listener)
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        // stop listening field data changes
+        field?.listeners?.remove(listener)
     }
 
     private fun initDefaultColors() {
@@ -97,7 +128,7 @@ class OrderTicketView @JvmOverloads constructor(
             color = Color.BLACK
             style = Paint.Style.STROKE
             strokeWidth =
-                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 1f, resources.displayMetrics)
+                TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 2f, resources.displayMetrics)
         }
         freeSeatPaint = Paint().apply {
             Paint.ANTI_ALIAS_FLAG
@@ -123,9 +154,9 @@ class OrderTicketView @JvmOverloads constructor(
         }
     }
 
-    fun setSeats(seats: List<Seat>) {
-        this.seatList = seats
-    }
+//    fun setSeats(seats: List<Seat>) {
+//        this.seatList = seats
+//    }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
 
@@ -181,7 +212,7 @@ class OrderTicketView @JvmOverloads constructor(
     }
 
     private fun drawSeats(canvas: Canvas) {
-        for (seat in seatList) {
+        for (seat in field?.seats!!) {
             val cellRect = getCellRect(seat.x, seat.y)
             val rowTextRect = getRowTextRect(cellRect)
             val placeTextRect = getPlaceTextRect(cellRect, seat.place.toString())
@@ -262,43 +293,44 @@ class OrderTicketView @JvmOverloads constructor(
                     }
                 }
 
-                SeatStatus.EMPTY -> {}
+                SeatStatus.SELECTED -> {
+                    canvas.apply {
+                        drawRect(
+                            cellRect.left,
+                            cellRect.top,
+                            cellRect.right,
+                            cellRect.bottom,
+                            freeSeatPaint
+                        )
+                        drawText("${seat.row}", rowTextRect.left, rowTextRect.top, textPaint)
+                        drawText(
+                            "${seat.place}",
+                            placeTextRect.right,
+                            placeTextRect.bottom,
+                            textPaint
+                        )
+                        drawRect(
+                            cellRect.left,
+                            cellRect.top ,
+                            cellRect.right,
+                            cellRect.bottom,
+                            borderPaint
+                        )
+                    }
+                }
+                else -> {
+
+                }
             }
         }
 
     }
 
 
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when(event.action){
-            MotionEvent.ACTION_UP ->{
-                val clickedSeat = getClickedSeat(event.x,event.y)
-                clickedSeat?.let{
-                    if (clickedSeat.status == SeatStatus.FREE_SEAT){
-                        seatClickListener?.onSeatClicked(it)
-                        invalidate()
-                        return true
-                    }
-                }
-            }
-            MotionEvent.ACTION_DOWN ->{
-                val clickedSeat = getClickedSeat(event.x,event.y)
-                clickedSeat?.let{
-                    if (clickedSeat.status == SeatStatus.FREE_SEAT){
-                        seatClickListener?.onSeatClicked(it)
-                        invalidate()
-                        return true
-                    }
-                }
-            }
-        }
-        return super.onTouchEvent(event)
-    }
 
-    private fun getClickedSeat(x: Float, y: Float): Seat? {
-        for (seat in seatList){
-            val cellRect = getCellRect(seat.x,seat.y)
-            if (x>= cellRect.left && x<= cellRect.right && y>= cellRect.top && y<= cellRect.bottom){
+    private fun getClickedSeat(x: Int, y: Int): Seat? {
+        for (seat in field?.seats!!){
+            if (seat.x == x && seat.y == y){
                 return seat
             }
         }
@@ -325,5 +357,65 @@ class OrderTicketView @JvmOverloads constructor(
         return cellRect
     }
 
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when(event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                updateCurrentCell(event)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                updateCurrentCell(event)
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                return performClick()
+            }
+        }
+        return false
+    }
+    override fun performClick(): Boolean {
+        super.performClick()
+        val field = this.field ?: return false
+        val row = currentRow
+        val column = currentColumn
+        val seat = getClickedSeat(currentRow,currentColumn)
+        if (row >= 0 && column >= 0 && row < field.rows && column < field.columns && seat != null) {
+            actionListener?.invoke(field, seat)
+            return true
+        }
+        return false
+    }
+
+
+    private fun updateCurrentCell(event: MotionEvent) {
+        val field = this.field ?: return
+        val row = getRow(event)
+        val column = getColumn(event)
+        if (row >= 0 && column >= 0 && row < field.rows && column < field.columns) {
+            if (currentRow != row || currentColumn != column) {
+                currentRow = row
+                currentColumn = column
+                invalidate()
+            }
+        } else {
+            // clearing current cell if user moves out from the view
+            currentRow = -1
+            currentColumn = -1
+            invalidate()
+        }
+    }
+
+    private fun getRow(event: MotionEvent): Int {
+        // floor is better then simple rounding to int in our case
+        // because it rounds to an integer towards negative infinity
+        // examples:
+        // 1) -0.3.toInt() = 0
+        // 2) floor(-0.3) = -1
+        return floor((event.y - fieldRect.top) / cellSize).toInt()
+    }
+
+    private fun getColumn(event: MotionEvent): Int {
+        return floor((event.x - fieldRect.left) / cellSize).toInt()
+    }
 
 }
