@@ -5,5 +5,6 @@ enum class SeatStatus {
     ORDERED_SEAT,
     NOT_AVAILABLE_SEAT,
     ISSUED_SEAT,
-    EMPTY
+    EMPTY,
+    SELECTED
 }
